@@ -1,5 +1,7 @@
 import 'sceditor/minified/sceditor.min.js';
 import 'sceditor/minified/formats/bbcode';
+import 'sceditor/minified/plugins/undo';
+
 import getCaretCoordinates from 'textarea-caret';
 import ItemList from 'flarum/common/utils/ItemList';
 import styleSelectedText from 'flarum/common/utils/styleSelectedText';
@@ -76,6 +78,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
       resizeEnabled: false,
       dateFormat: 'yyyy-mm-dd',
       rtl: false,
+      plugins: "hooks,undo"
     });
     this.editor = sceditor;
     this.instance = sceditor.instance(this.tempEl);

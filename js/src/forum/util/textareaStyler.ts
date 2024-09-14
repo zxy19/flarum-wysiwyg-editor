@@ -12,6 +12,7 @@ export function makeWrapTextarea(textarea: HTMLTextAreaElement, editor: SCEditor
                 else
                     editor.insert("WYSIWGY_FLAG_SELECTRANGESTART", "WYSIWGY_FLAG_SELECTRANGEEND")
                 const text = editor.val();
+                (editor as any)._keys['ctrl+z']();
                 const startIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGESTART");
                 const endIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGEEND");
                 target.value = text.replace(/WYSIWGY_FLAG_SELECTRANGESTART/g, "").replace(/WYSIWGY_FLAG_SELECTRANGEEND/g, "");

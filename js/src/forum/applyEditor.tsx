@@ -10,8 +10,12 @@ import classList from 'flarum/common/utils/classList';
 // import MenuState from './MenuState';
 // import ProseMirrorMenu from './ProseMirrorMenu';
 import BBcodeEditorDriver from './BBcodeEditorDriver';
+import hookEditorPlugin from './plugin/hookEditorPlugin';
 
 export default function applyEditor() {
+
+  sceditor.plugins.hooks = hookEditorPlugin;
+
   let instance: any = null;
   extend(TextEditor.prototype, 'controlItems', function (items) {
     // if (!app.forum.attribute('toggleRichTextEditorButton')) return;

@@ -570,7 +570,8 @@ interface SCEditor {
 
 interface GlobalSCEditor extends SCEditor {
   create(element: HTMLElement, options?: SCEditorOptions): SCEditor
-  instance(element: HTMLElement): SCEditor
+  instance(element: HTMLElement): SCEditor,
+  plugins: Record<string, any>
 }
 
 type CamelToSnakeCase<S extends string> =
