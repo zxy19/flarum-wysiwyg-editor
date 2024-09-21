@@ -1,3 +1,13 @@
+function addEditibleTag(template: HTMLElement) {
+    Array.from(template.getElementsByTagName("xsl:apply-templates")).forEach(template => {
+        (template.parentNode as HTMLElement).setAttribute("data-editable","1");
+    });
+
+    Array.from(template.getElementsByTagName("xsl:value-of")).forEach(template => {
+        (template.parentNode as HTMLElement).setAttribute("data-editable","1");
+    });
+}
+
 export function transformTemplate(templates: HTMLElement) {
     const templateNodeList = Array.from(templates.querySelectorAll("template"))
     templateNodeList.forEach((template) => {
@@ -8,6 +18,7 @@ export function transformTemplate(templates: HTMLElement) {
             template.append(wrapper)
         }
         (template.childNodes[0] as HTMLElement).setAttribute("data-template-match-name", (template.getAttribute("match") || "").toLowerCase())
+        addEditibleTag(template);
     });
 }
 

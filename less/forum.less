@@ -8,7 +8,7 @@ div.sceditor-grip {
   -webkit-box-direction: normal;
   background: var(--body-bg-faded);
   background-clip: padding-box;
-  color: var(--control-color);
+  color: var(--text-color);
   display: -ms-flexbox;
   display: -webkit-box;
   display: flex;
@@ -43,7 +43,7 @@ div.sceditor-dropdown div {
   -webkit-box-flex: 1;
   background: var(--body-bg-faded);
   border: 0;
-  color: var(--control-color);
+  color: var(--text-color);
   display: block;
   -ms-flex: 1 1 0%;
   flex: 1 1 0%;
@@ -121,4 +121,21 @@ html.sceditor-maximize {
 
 .sceditor-toolbar {
   display: none;
+}
+
+
+.TextEditor-editorContainer{
+  position: relative;
+  &>*{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+  }
+  .sceditor-container{
+    position: relative;
+    z-index: 100;
+  }
 }

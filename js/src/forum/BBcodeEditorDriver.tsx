@@ -11,8 +11,10 @@ import { type EditorDriverParams } from 'flarum/common/utils/EditorDriverInterfa
 import getTemplates, { Template } from './getTemplates';
 import { BindEvent, GlobalSCEditor, RangeHelper, SCEditor } from '../@types/sceditor';
 import { makeWrapTextarea } from './util/textareaStyler';
-import { format, html } from './util/bbcodeFormatUtil';
+import { format, html, presentNodeEditable } from './util/bbcodeFormatUtil';
 import { handleShortcuts } from './util/shortcutHandleUtil';
+
+const DEBUG = true;
 
 const ORIGINAL_TAGS = ['b', 'i', 'u', 's', 'sub', 'sup', 'font', 'size', 'color', 'ul',
   'list', 'ol', 'li', '*', 'table', 'tr', 'th', 'td', 'emoticon', 'hr', 'img', 'url',
@@ -28,15 +30,19 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
   editor: GlobalSCEditor | null = null;
   rangeHelper: RangeHelper | null = null;
   extraBBcode: Template[] = [];
+  flags: {
+    updating_select: boolean
+  } = {
+      updating_select: false
+    };
   s9ePreview: HTMLDivElement;
 
   constructor(dom: HTMLElement, params: EditorDriverParams) {
     this._textarea = this.tempEl = this.el = document.createElement('textarea');
     this.s9ePreview = document.createElement('div');
-    this.extraBBcode = getTemplates();
     this.build(dom, params);
     // 搞一个假的textarea
-    this.el = this.tempEl = makeWrapTextarea(this.tempEl, this.instance!);
+    this.el = this.tempEl = makeWrapTextarea(this.tempEl, this.instance!, this.flags);
   }
 
   build(dom: HTMLElement, params: EditorDriverParams) {
@@ -49,7 +55,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
     this.s9ePreview.className = 'Post-body s9e-preview bbcode-editor-preview';
     this.s9ePreview.style.display = 'none';
     dom.append(this.s9ePreview);
-
+    this.extraBBcode = getTemplates();
     this.params = params;
     let sceditor = window.sceditor;
     ORIGINAL_TAGS.forEach(tag => sceditor.formats.bbcode.remove(tag))
@@ -63,6 +69,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
           },
         },
         allowsEmpty: true,
+        isInline: template.inline,
         isSelfClosing: template.selfClose,
         format: format(template),
         html: html(template, this.s9ePreview)
@@ -82,6 +89,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
     });
     this.editor = sceditor;
     this.instance = sceditor.instance(this.tempEl);
+    this.instance.bind("valuechanged", presentNodeEditable(this.instance) as any);
     handleShortcuts(this.instance);
     this.rangeHelper = this.instance.getRangeHelper();
 
@@ -91,7 +99,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
     this.instance.width('100%');
     const root = document.documentElement;
     const bodyBg = getComputedStyle(root).getPropertyValue('--body-bg').trim();
-    const controlColor = getComputedStyle(root).getPropertyValue('--control-color').trim();
+    const controlColor = getComputedStyle(root).getPropertyValue('--text-color').trim();
     this.instance.css('body {background-color: ' + bodyBg + '; color: ' + controlColor + ' !important;}');
     this.instance.focus();
 
@@ -112,6 +120,7 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
 
     (['keyup', 'keydown', 'keypress', 'blur', 'focus'] as BindEvent[]).forEach((event: BindEvent) => {
       this.instance!.bind(event, (e: Event) => {
+        if (this.flags.updating_select) return;
         params.oninput(this.instance!.val());
         callInputListeners(e);
       });
@@ -152,19 +161,17 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
    * @return {Array}
    */
   getSelectionRange() {
-    let range = this.rangeHelper!.selectedRange();
-
-    return [range.startOffset, range.endOffset];
+    this.el.focus();
+    return [this.el.selectionStart, this.el.selectionEnd];
   }
 
   /**
    * Get (at most) the last N characters from the current "text block".
    */
   getLastNChars(n: number) {
-    const value = this.instance!.val();
-    // console.log(value);
-
-    return value.slice(Math.max(0, this.getSelectionRange()[0] - n), this.getSelectionRange()[0]);
+    const range = this.getSelectionRange();
+    const value = this.el.value;
+    return value.slice(Math.max(0, range[0] - n), range[0]);
   }
 
   /**
@@ -173,7 +180,8 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
    * @param {String} text
    */
   insertAtCursor(text: string) {
-    this.insertAt(this.getSelectionRange()[0], text);
+    const range = this.getSelectionRange();
+    this.insertAt(range[0], text);
   }
 
   /**
@@ -197,9 +205,8 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
    * @param text
    */
   insertBetween(selectionStart: number, selectionEnd: number, text: string) {
-    this.setSelectionRange(selectionStart, selectionEnd);
-
-    this.instance!.insert(text);
+    this.el.focus();
+    this.el.value = this.el.value.substring(0, selectionStart) + text + this.el.value.substring(selectionEnd);
   }
 
   /**
@@ -220,29 +227,8 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
    * @private
    */
   setSelectionRange(start: number, end: number) {
-    let range = document.createRange();
-
-    range.setStart(this.el, start);
-    range.setEnd(this.el, end);
-
-    this.rangeHelper!.selectRange(range);
-    this.focus();
-  }
-
-  getTextNodeWidth(textNode: any) {
-    const tempElement = document.createElement('span');
-    tempElement.textContent = textNode.nodeValue;
-
-    const styles = window.getComputedStyle(textNode.parentNode);
-    tempElement.style.fontSize = styles.fontSize;
-    tempElement.style.fontFamily = styles.fontFamily;
-    tempElement.style.whiteSpace = 'nowrap';
-    tempElement.style.position = 'absolute';
-    tempElement.style.visibility = 'hidden';
-    document.body.appendChild(tempElement);
-    const width = tempElement.getBoundingClientRect().width;
-    document.body.removeChild(tempElement);
-    return width;
+    this.el.selectionStart = start;
+    this.el.selectionEnd = end;
   }
 
   getCaretCoordinates(position: number) {
@@ -255,31 +241,19 @@ export default class BBcodeEditorDriver implements EditorDriverInterface {
         left: relCoords.left,
       };
     }
-    let node = this.instance!.currentNode();
-    if (!node) return {
-      top: 0,
-      left: 0
-    }
-    if (node.nodeType === 3) {
-      let parent = node.parentNode! as HTMLElement;
-      let width = this.getTextNodeWidth(node);
-      let rect = parent.getBoundingClientRect();
-      let left = rect.left + width;
-      let top = rect.top + rect.height;
-      console.log(parent, left, top);
-      return {
-        left,
-        top,
-      };
-    }
-    const rect = (node as HTMLElement).getBoundingClientRect();
-    const left = rect.left + rect.width;
-    const top = rect.top + rect.height;
-    console.log(node, left, top);
-    return {
-      left,
-      top,
+
+    this.rangeHelper?.insertMarkers();
+    const marker = $(this.instance!.getBody()).find("#sceditor-end-marker")[0];
+    marker.style.display = "inline";
+    const rect = marker.getBoundingClientRect();
+    marker.style.display = "none";
+    this.rangeHelper?.removeMarkers();
+    const ret = {
+      left: rect.left,
+      top: rect.top,
     };
+    DEBUG && console.log("🏁Rect Calc", ret);
+    return ret;
   }
 
   focus() {

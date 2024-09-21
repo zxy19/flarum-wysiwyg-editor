@@ -3712,6 +3712,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+var DEBUG = true;
 var ORIGINAL_TAGS = ['b', 'i', 'u', 's', 'sub', 'sup', 'font', 'size', 'color', 'ul', 'list', 'ol', 'li', '*', 'table', 'tr', 'th', 'td', 'emoticon', 'hr', 'img', 'url', 'email', 'quote', 'code', 'left', 'center', 'right', 'justify', 'youtube', 'rtl', 'ltr'];
 var BBcodeEditorDriver = /*#__PURE__*/function () {
   function BBcodeEditorDriver(dom, params) {
@@ -3724,13 +3725,15 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
     this.editor = null;
     this.rangeHelper = null;
     this.extraBBcode = [];
+    this.flags = {
+      updating_select: false
+    };
     this.s9ePreview = void 0;
     this._textarea = this.tempEl = this.el = document.createElement('textarea');
     this.s9ePreview = document.createElement('div');
-    this.extraBBcode = (0,_getTemplates__WEBPACK_IMPORTED_MODULE_4__["default"])();
     this.build(dom, params);
     // 搞一个假的textarea
-    this.el = this.tempEl = (0,_util_textareaStyler__WEBPACK_IMPORTED_MODULE_5__.makeWrapTextarea)(this.tempEl, this.instance);
+    this.el = this.tempEl = (0,_util_textareaStyler__WEBPACK_IMPORTED_MODULE_5__.makeWrapTextarea)(this.tempEl, this.instance, this.flags);
   }
   var _proto = BBcodeEditorDriver.prototype;
   _proto.build = function build(dom, params) {
@@ -3743,6 +3746,7 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
     this.s9ePreview.className = 'Post-body s9e-preview bbcode-editor-preview';
     this.s9ePreview.style.display = 'none';
     dom.append(this.s9ePreview);
+    this.extraBBcode = (0,_getTemplates__WEBPACK_IMPORTED_MODULE_4__["default"])();
     this.params = params;
     var sceditor = window.sceditor;
     ORIGINAL_TAGS.forEach(function (tag) {
@@ -3757,6 +3761,7 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
           "data-template-match-name": template.name.toLowerCase()
         }, _tags),
         allowsEmpty: true,
+        isInline: template.inline,
         isSelfClosing: template.selfClose,
         format: (0,_util_bbcodeFormatUtil__WEBPACK_IMPORTED_MODULE_6__.format)(template),
         html: (0,_util_bbcodeFormatUtil__WEBPACK_IMPORTED_MODULE_6__.html)(template, _this.s9ePreview)
@@ -3776,6 +3781,7 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
     });
     this.editor = sceditor;
     this.instance = sceditor.instance(this.tempEl);
+    this.instance.bind("valuechanged", (0,_util_bbcodeFormatUtil__WEBPACK_IMPORTED_MODULE_6__.presentNodeEditable)(this.instance));
     (0,_util_shortcutHandleUtil__WEBPACK_IMPORTED_MODULE_7__.handleShortcuts)(this.instance);
     this.rangeHelper = this.instance.getRangeHelper();
     var cssClasses = params.classNames || [];
@@ -3786,7 +3792,7 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
     this.instance.width('100%');
     var root = document.documentElement;
     var bodyBg = getComputedStyle(root).getPropertyValue('--body-bg').trim();
-    var controlColor = getComputedStyle(root).getPropertyValue('--control-color').trim();
+    var controlColor = getComputedStyle(root).getPropertyValue('--text-color').trim();
     this.instance.css('body {background-color: ' + bodyBg + '; color: ' + controlColor + ' !important;}');
     this.instance.focus();
     var iframe = this.instance.getContentAreaContainer();
@@ -3803,6 +3809,7 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
     this.el.onkeyup = callInputListeners;
     ['keyup', 'keydown', 'keypress', 'blur', 'focus'].forEach(function (event) {
       _this.instance.bind(event, function (e) {
+        if (_this.flags.updating_select) return;
         params.oninput(_this.instance.val());
         callInputListeners(e);
       });
@@ -3840,18 +3847,17 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
    * @return {Array}
    */;
   _proto.getSelectionRange = function getSelectionRange() {
-    var range = this.rangeHelper.selectedRange();
-    return [range.startOffset, range.endOffset];
+    this.el.focus();
+    return [this.el.selectionStart, this.el.selectionEnd];
   }
 
   /**
    * Get (at most) the last N characters from the current "text block".
    */;
   _proto.getLastNChars = function getLastNChars(n) {
-    var value = this.instance.val();
-    // console.log(value);
-
-    return value.slice(Math.max(0, this.getSelectionRange()[0] - n), this.getSelectionRange()[0]);
+    var range = this.getSelectionRange();
+    var value = this.el.value;
+    return value.slice(Math.max(0, range[0] - n), range[0]);
   }
 
   /**
@@ -3860,7 +3866,8 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
    * @param {String} text
    */;
   _proto.insertAtCursor = function insertAtCursor(text) {
-    this.insertAt(this.getSelectionRange()[0], text);
+    var range = this.getSelectionRange();
+    this.insertAt(range[0], text);
   }
 
   /**
@@ -3884,8 +3891,8 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
    * @param text
    */;
   _proto.insertBetween = function insertBetween(selectionStart, selectionEnd, text) {
-    this.setSelectionRange(selectionStart, selectionEnd);
-    this.instance.insert(text);
+    this.el.focus();
+    this.el.value = this.el.value.substring(0, selectionStart) + text + this.el.value.substring(selectionEnd);
   }
 
   /**
@@ -3906,27 +3913,11 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
    * @private
    */;
   _proto.setSelectionRange = function setSelectionRange(start, end) {
-    var range = document.createRange();
-    range.setStart(this.el, start);
-    range.setEnd(this.el, end);
-    this.rangeHelper.selectRange(range);
-    this.focus();
-  };
-  _proto.getTextNodeWidth = function getTextNodeWidth(textNode) {
-    var tempElement = document.createElement('span');
-    tempElement.textContent = textNode.nodeValue;
-    var styles = window.getComputedStyle(textNode.parentNode);
-    tempElement.style.fontSize = styles.fontSize;
-    tempElement.style.fontFamily = styles.fontFamily;
-    tempElement.style.whiteSpace = 'nowrap';
-    tempElement.style.position = 'absolute';
-    tempElement.style.visibility = 'hidden';
-    document.body.appendChild(tempElement);
-    var width = tempElement.getBoundingClientRect().width;
-    document.body.removeChild(tempElement);
-    return width;
+    this.el.selectionStart = start;
+    this.el.selectionEnd = end;
   };
   _proto.getCaretCoordinates = function getCaretCoordinates(position) {
+    var _this$rangeHelper, _this$rangeHelper2;
     var isSourceMode = this.instance.sourceMode();
     if (isSourceMode) {
       var relCoords = textarea_caret__WEBPACK_IMPORTED_MODULE_3___default()(this.el, position);
@@ -3935,31 +3926,18 @@ var BBcodeEditorDriver = /*#__PURE__*/function () {
         left: relCoords.left
       };
     }
-    var node = this.instance.currentNode();
-    if (!node) return {
-      top: 0,
-      left: 0
+    (_this$rangeHelper = this.rangeHelper) == null || _this$rangeHelper.insertMarkers();
+    var marker = $(this.instance.getBody()).find("#sceditor-end-marker")[0];
+    marker.style.display = "inline";
+    var rect = marker.getBoundingClientRect();
+    marker.style.display = "none";
+    (_this$rangeHelper2 = this.rangeHelper) == null || _this$rangeHelper2.removeMarkers();
+    var ret = {
+      left: rect.left,
+      top: rect.top
     };
-    if (node.nodeType === 3) {
-      var parent = node.parentNode;
-      var width = this.getTextNodeWidth(node);
-      var _rect = parent.getBoundingClientRect();
-      var _left = _rect.left + width;
-      var _top = _rect.top + _rect.height;
-      console.log(parent, _left, _top);
-      return {
-        left: _left,
-        top: _top
-      };
-    }
-    var rect = node.getBoundingClientRect();
-    var left = rect.left + rect.width;
-    var top = rect.top + rect.height;
-    console.log(node, left, top);
-    return {
-      left: left,
-      top: top
-    };
+    DEBUG && console.log("🏁Rect Calc", ret);
+    return ret;
   };
   _proto.focus = function focus() {
     this.instance.focus();
@@ -4093,35 +4071,58 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _common_helper_XLSTMatchUtil__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../common/helper/XLSTMatchUtil */ "./src/common/helper/XLSTMatchUtil.ts");
 
-function closeTest(tagName) {
-  //@ts-ignore
-  var tagDef = s9e.TextFormatter.tagsConfig[tagName.toUpperCase()];
-  if (!tagDef) return false;
-  var attributeStr = Object.keys(tagDef.attributes).map(function (attr) {
-    return attr + "=0 ";
-  }).join(" ");
-  var testStrClose = "[" + tagName + " " + attributeStr + "][/" + tagName + "]";
-  var testStrOpen = "[" + tagName + " " + attributeStr + "]";
-  //@ts-ignore
-  var testClose = s9e.TextFormatter.parse(testStrClose);
-  //@ts-ignore
-  var testOpen = s9e.TextFormatter.parse(testStrOpen);
-  if (testClose.replace("<e>[/" + tagName + "]</e>", "") !== testOpen) return true;
-  return false;
-}
 var specialTags = ["TABLE", "THEAD", "TH", "TR", "TD", "TBODY"];
-function isBB(tagName) {
-  if (specialTags.includes(tagName.toUpperCase())) return true;
+function withGeneratedBBCode(tagName, callback) {
+  if (specialTags.includes(tagName.toUpperCase())) return false;
   //@ts-ignore
   var tagDef = s9e.TextFormatter.tagsConfig[tagName.toUpperCase()];
   if (!tagDef) return false;
-  var attributeStr = [tagName].concat(Object.keys(tagDef.attributes).map(function (attr) {
-    return attr + "=0 ";
-  })).join(" ");
-  var testStr = "[" + attributeStr + "][/" + tagName + "]";
-  //@ts-ignore
-  var testClose = s9e.TextFormatter.parse(testStr);
-  return testClose.includes("<" + tagName.toUpperCase());
+  var attributeStrBuilder = [tagName];
+  var filterChain = tagDef.filterChain;
+  tagDef.filterChain = [];
+  Object.keys(tagDef.attributes).map(function (e) {
+    return e.toLowerCase();
+  }).forEach(function (attr) {
+    if (attributeStrBuilder[0].toLowerCase() === tagName.toLowerCase()) {
+      attributeStrBuilder[0] = attributeStrBuilder[0] + "=0";
+    } else {
+      attributeStrBuilder.push(attr + "=0");
+    }
+  });
+  var attributeStr = attributeStrBuilder.join(" ");
+  var startTag = "[" + attributeStr + "]";
+  var closeTag = "[/" + tagName + "]";
+  var ret = callback(startTag, closeTag);
+  tagDef.filterChain = filterChain;
+  return ret;
+}
+function closeTest(tagName) {
+  return withGeneratedBBCode(tagName, function (startTag, closeTag) {
+    var tmpNode = document.createElement("div");
+    //@ts-ignore
+    s9e.TextFormatter.preview(startTag + closeTag, tmpNode);
+    if (tmpNode.innerHTML.includes(closeTag)) return true;
+    return false;
+  });
+}
+function isBB(tagName) {
+  return withGeneratedBBCode(tagName, function (startTag, closeTag) {
+    //@ts-ignore
+    var parseResult = s9e.TextFormatter.parse(startTag + closeTag);
+    return parseResult.includes("<" + tagName.toUpperCase());
+  });
+}
+function isInline(tagName) {
+  return withGeneratedBBCode(tagName, function (startTag, closeTag) {
+    var _preview$children$fir;
+    var preview = $(".s9e-preview.bbcode-editor-preview");
+    if (!preview) {
+      preview = $("<div></div>").appendTo($("body"));
+    }
+    //@ts-ignore
+    s9e.TextFormatter.preview(startTag + closeTag, preview[0]);
+    return ["inline", "inline-block"].includes(((_preview$children$fir = preview.children().first()[0].computedStyleMap().get("display")) == null ? void 0 : _preview$children$fir.toString()) || "block");
+  });
 }
 function getTemplates() {
   // @ts-ignore
@@ -4143,6 +4144,7 @@ function getTemplates() {
       name: match,
       parentName: parentName,
       content: content,
+      inline: isInline(match),
       selfClose: closeTest(match),
       matching: new _common_helper_XLSTMatchUtil__WEBPACK_IMPORTED_MODULE_0__["default"](template)
     });
@@ -4214,7 +4216,8 @@ function hookEditorPlugin() {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   format: () => (/* binding */ format),
-/* harmony export */   html: () => (/* binding */ html)
+/* harmony export */   html: () => (/* binding */ html),
+/* harmony export */   presentNodeEditable: () => (/* binding */ presentNodeEditable)
 /* harmony export */ });
 var DEBUG = true;
 function format(template) {
@@ -4226,6 +4229,14 @@ function format(template) {
         DEBUG && console.log("❌Template does not match", template.name);
         return content;
       }
+      var name = template.name.toUpperCase();
+      var selfTagAttr = Object.keys(attributes).find(function (k) {
+        return k.toLowerCase() === template.name.toLowerCase();
+      });
+      if (selfTagAttr) {
+        name = name + "=" + attributes[selfTagAttr];
+        delete attributes[selfTagAttr];
+      }
       var attributeStr = Object.keys(attributes).filter(function (k) {
         return k != "@template" && k != "@pattern";
       }).map(function (key) {
@@ -4234,8 +4245,11 @@ function format(template) {
       var closingTag = template.selfClose ? '' : "[/" + template.name.toUpperCase() + "]";
       content = (new RegExp(attributes['@pattern'], 'img').exec(content) || ["", content])[1] || "";
       attributes['@template'] = content;
-      DEBUG && console.log("✅Match", attributes, content);
-      return "[" + template.name.toUpperCase() + " " + attributeStr + "]" + (attributes['@template'] || "") + closingTag;
+      var ret = "[" + [name, attributeStr].filter(function (e) {
+        return !!e;
+      }).join(" ") + "]" + (attributes['@template'] || "") + closingTag;
+      DEBUG && console.log("✅Match", attributes, ret);
+      return ret;
     }
     DEBUG && console.log("❓Missing tag", content);
     return content;
@@ -4256,7 +4270,20 @@ function html(template, preViewElem) {
     if (html.startsWith("<p>") && html.endsWith("</p>")) {
       html = html.substring(3, html.length - 4);
     }
-    return html.replace(/FLAT_WYSIWYG_CONTENT_PLACEHOLDER/g, content);
+    html = html.replace(/<([A-Za-z][^>]*)>/ig, "<$1 data-contenteditable=\"false\">");
+    Array.from(html.matchAll(/<[A-Za-z]([^<>]*(data-contenteditable=\"false\"|data-editable=\"1\")[^<>]*){2}>/ig)).reverse().forEach(function (e) {
+      html = html.replace(e[0], e[0].replace("data-contenteditable=\"false\"", "data-contenteditable=\"true\""));
+    });
+    var ret = html.replace(/FLAT_WYSIWYG_CONTENT_PLACEHOLDER/g, content);
+    DEBUG && console.log("✅Done", ret);
+    return ret;
+  };
+}
+function presentNodeEditable(instance) {
+  return function (a) {
+    $(instance.getBody()).find("[data-contenteditable]").each(function (_, e) {
+      $(e).attr("contenteditable", $(e).attr("data-contenteditable") || "true").removeAttr("data-contenteditable");
+    });
   };
 }
 
@@ -4324,6 +4351,14 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   preprocessTags: () => (/* binding */ preprocessTags),
 /* harmony export */   transformTemplate: () => (/* binding */ transformTemplate)
 /* harmony export */ });
+function addEditibleTag(template) {
+  Array.from(template.getElementsByTagName("xsl:apply-templates")).forEach(function (template) {
+    template.parentNode.setAttribute("data-editable", "1");
+  });
+  Array.from(template.getElementsByTagName("xsl:value-of")).forEach(function (template) {
+    template.parentNode.setAttribute("data-editable", "1");
+  });
+}
 function transformTemplate(templates) {
   var templateNodeList = Array.from(templates.querySelectorAll("template"));
   templateNodeList.forEach(function (template) {
@@ -4334,6 +4369,7 @@ function transformTemplate(templates) {
       template.append(wrapper);
     }
     template.childNodes[0].setAttribute("data-template-match-name", (template.getAttribute("match") || "").toLowerCase());
+    addEditibleTag(template);
   });
 }
 var basicTags = "B|DEL|EM|H1|H2|H3|H4|H5|H6|I|INS|LI|S|STRONG|SUB|SUP|TABLE|TBODY|THEAD|TR|U|p";
@@ -4376,19 +4412,37 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   makeWrapTextarea: () => (/* binding */ makeWrapTextarea)
 /* harmony export */ });
-function makeWrapTextarea(textarea, editor) {
+function makeWrapTextarea(textarea, editor, flags) {
+  var version = 0;
+  var updated = 0;
+  editor.bind("selectionchanged", function () {
+    return flags.updating_select || updated++;
+  });
+  editor.bind("nodechanged", function () {
+    return flags.updating_select || updated++;
+  });
+  editor.bind("valuechanged", function () {
+    return flags.updating_select || updated++;
+  });
   return new Proxy(textarea, {
     get: function get(target, prop) {
       if (prop === 'focus') {
         if (editor.sourceMode()) return target.focus.bind(target);
-        if (editor.getRangeHelper().selectedRange().collapsed) editor.insert("WYSIWGY_FLAG_SELECTRANGESTART");else editor.insert("WYSIWGY_FLAG_SELECTRANGESTART", "WYSIWGY_FLAG_SELECTRANGEEND");
-        var text = editor.val();
-        editor._keys['ctrl+z']();
-        var startIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGESTART");
-        var endIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGEEND");
-        target.value = text.replace(/WYSIWGY_FLAG_SELECTRANGESTART/g, "").replace(/WYSIWGY_FLAG_SELECTRANGEEND/g, "");
-        if (startIndex !== -1 && endIndex !== -1) {
-          target.setSelectionRange(startIndex, endIndex - "WYSIWGY_FLAG_SELECTRANGESTART".length);
+        if (version !== updated) {
+          flags.updating_select = true;
+          editor.getRangeHelper().saveRange();
+          if (editor.getRangeHelper().selectedRange().collapsed) editor.insert("WYSIWGY_FLAG_SELECTRANGESTART");else editor.insert("WYSIWGY_FLAG_SELECTRANGESTART", "WYSIWGY_FLAG_SELECTRANGEEND");
+          var text = editor.val();
+          editor._keys['ctrl+z']();
+          var startIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGESTART");
+          var endIndex = text.indexOf("WYSIWGY_FLAG_SELECTRANGEEND");
+          target.value = text.replace(/WYSIWGY_FLAG_SELECTRANGESTART/g, "").replace(/WYSIWGY_FLAG_SELECTRANGEEND/g, "");
+          if (startIndex !== -1 && endIndex !== -1) {
+            target.setSelectionRange(startIndex, endIndex - "WYSIWGY_FLAG_SELECTRANGESTART".length);
+          }
+          editor.getRangeHelper().restoreRange();
+          version = updated;
+          flags.updating_select = false;
         }
         return target.focus.bind(target);
       } else if (prop === "value") {
